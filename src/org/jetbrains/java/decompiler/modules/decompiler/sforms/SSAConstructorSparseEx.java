@@ -20,10 +20,7 @@ import org.jetbrains.java.decompiler.util.FastSparseSetFactory.FastSparseSet;
 import org.jetbrains.java.decompiler.util.InterpreterUtil;
 import org.jetbrains.java.decompiler.util.SFormsFastMapDirect;
 
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.ArrayList;
+import java.util.*;
 import java.util.Map.Entry;
 
 public class SSAConstructorSparseEx {
@@ -45,6 +42,9 @@ public class SSAConstructorSparseEx {
 
   // var, version
   private final HashMap<Integer, Integer> lastversion = new HashMap<>();
+
+  // (var, version), [exprents]
+  public final Map<VarVersionPair, HashSet<VarExprent>> varVersionToExpr = new HashMap<>();
 
   // set factory
   private FastSparseSetFactory<Integer> factory;
@@ -231,10 +231,9 @@ public class SSAConstructorSparseEx {
         // set version
         varassign.setVersion(nextver);
 
-        setCurrentVar(varmap, varindex, nextver);
-      }
-      else {
-        setCurrentVar(varmap, varindex, varassign.getVersion());
+        setCurrentVar(varmap, varindex, nextver, varassign);
+      } else {
+        setCurrentVar(varmap, varindex, varassign.getVersion(), varassign);
       }
     }
     else if (expr.type == Exprent.EXPRENT_VAR) {
@@ -248,13 +247,16 @@ public class SSAConstructorSparseEx {
         // set version
         int it = vers.iterator().next();
         vardest.setVersion(it);
+
+        varVersionToExpr.computeIfAbsent(new VarVersionPair(varindex, it), k -> new HashSet<>())
+          .add(vardest);
       }
       else if (cardinality == 2) { // size > 1
         int current_vers = vardest.getVersion();
 
         VarVersionPair currpaar = new VarVersionPair(varindex, current_vers);
         if (current_vers != 0 && phi.containsKey(currpaar)) {
-          setCurrentVar(varmap, varindex, current_vers);
+          setCurrentVar(varmap, varindex, current_vers, vardest);
           // update phi node
           phi.get(currpaar).union(vers);
         }
@@ -264,19 +266,19 @@ public class SSAConstructorSparseEx {
           // set version
           vardest.setVersion(nextver);
 
-          setCurrentVar(varmap, varindex, nextver);
+          setCurrentVar(varmap, varindex, nextver, vardest);
           // create new phi node
           phi.put(new VarVersionPair(varindex, nextver), vers);
         }
       } // 0 means uninitialized variable
       else if (cardinality == 0) {
         if (vardest.getVersion() != 0) {
-          setCurrentVar(varmap, varindex, vardest.getVersion());
+          setCurrentVar(varmap, varindex, vardest.getVersion(), vardest);
         }
         else {
           int nextver = getNextFreeVersion(varindex);
           vardest.setVersion(nextver);
-          setCurrentVar(varmap, varindex, nextver);
+          setCurrentVar(varmap, varindex, nextver, vardest);
         }
       }
     }
@@ -444,10 +446,15 @@ public class SSAConstructorSparseEx {
     return true;
   }
 
-  private void setCurrentVar(SFormsFastMapDirect varmap, int var, int vers) {
+  private void setCurrentVar(SFormsFastMapDirect varmap, int var, int vers, VarExprent varex) {
     FastSparseSet<Integer> set = factory.spawnEmptySet();
     set.add(vers);
     varmap.put(var, set);
+
+    if (varex != null) {
+      this.varVersionToExpr.computeIfAbsent(new VarVersionPair(var, vers), k -> new HashSet<>())
+        .add(varex);
+    }
   }
 
   private void setCatchMaps(Statement stat, DirectGraph dgraph, FlattenStatementsHelper flatthelper) {
@@ -471,7 +478,7 @@ public class SSAConstructorSparseEx {
           int version = getNextFreeVersion(varindex); // == 1
 
           map = new SFormsFastMapDirect();
-          setCurrentVar(map, varindex, version);
+          setCurrentVar(map, varindex, version, null);
 
           extraVarVersions.put(dgraph.nodes.getWithKey(flatthelper.getMapDestinationNodes().get(stat.getStats().get(i).id)[0]).id, map);
         }

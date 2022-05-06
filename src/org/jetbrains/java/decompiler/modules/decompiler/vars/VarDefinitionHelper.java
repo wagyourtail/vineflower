@@ -16,6 +16,7 @@ import org.jetbrains.java.decompiler.modules.decompiler.exps.FunctionExprent;
 import org.jetbrains.java.decompiler.modules.decompiler.exps.InvocationExprent;
 import org.jetbrains.java.decompiler.modules.decompiler.exps.NewExprent;
 import org.jetbrains.java.decompiler.modules.decompiler.exps.VarExprent;
+import org.jetbrains.java.decompiler.modules.decompiler.sforms.SSAConstructorSparseEx;
 import org.jetbrains.java.decompiler.modules.decompiler.sforms.SSAUConstructorSparseEx;
 import org.jetbrains.java.decompiler.modules.decompiler.stats.*;
 import org.jetbrains.java.decompiler.struct.StructClass;
@@ -105,7 +106,7 @@ public class VarDefinitionHelper {
       vc.addName("this");
     }
 
-    mergeVars(root);
+    mergeVars(null, root);
 
     // catch variables are implicitly defined
     LinkedList<Statement> stack = new LinkedList<>();
@@ -223,7 +224,28 @@ public class VarDefinitionHelper {
       }
     }
 
-    mergeVars(root);
+    SSAConstructorSparseEx ssa = new SSAConstructorSparseEx();
+
+    ssa.splitVariables((RootStatement) root, ((RootStatement)root).mt);
+
+//    System.out.println(root.toJava().convertToStringAndAllowDataDiscard());
+
+//    System.out.println(ssa.varVersionToExpr);
+
+    for (HashSet<VarExprent> set : ssa.varVersionToExpr.values()) {
+      for (VarExprent ex : set) {
+        ex.setVersion(0);
+      }
+    }
+
+    mergeVars(ssa, root);
+
+    for (HashSet<VarExprent> set : ssa.varVersionToExpr.values()) {
+      for (VarExprent ex : set) {
+        ex.setVersion(0);
+      }
+    }
+
     propogateLVTs(root);
     setNonFinal(root, new HashSet<>());
     remapClashingNames(root);
@@ -499,7 +521,7 @@ public class VarDefinitionHelper {
     }
   }
 
-  private VPPEntry mergeVars(Statement stat) {
+  private VPPEntry mergeVars(SSAConstructorSparseEx ssa, Statement stat) {
     Map<Integer, VarVersionPair> parent = new HashMap<Integer, VarVersionPair>(); // Always empty dua!
     MethodDescriptor md = MethodDescriptor.parseDescriptor(mt.getDescriptor());
 
@@ -516,20 +538,20 @@ public class VarDefinitionHelper {
     populateTypeBounds(varproc, stat);
 
     Map<VarVersionPair, VarVersionPair> blacklist = new HashMap<VarVersionPair, VarVersionPair>();
-    VPPEntry remap = mergeVars(stat, parent, new HashMap<Integer, VarVersionPair>(), blacklist);
+    VPPEntry remap = mergeVars(ssa, stat, parent, new HashMap<Integer, VarVersionPair>(), blacklist);
     while (remap != null) {
-      //System.out.println("Remapping: " + remap.getKey() + " -> " + remap.getValue());
+//      System.out.println("Remapping: " + remap.getKey() + " -> " + remap.getValue());
       if (!remapVar(stat, remap.getKey(), remap.getValue())) {
         blacklist.put(remap.getKey(), remap.getValue());
       }
 
-      remap = mergeVars(stat, parent, new HashMap<Integer, VarVersionPair>(), blacklist);
+      remap = mergeVars(ssa, stat, parent, new HashMap<Integer, VarVersionPair>(), blacklist);
     }
     return null;
   }
 
 
-  private VPPEntry mergeVars(Statement stat, Map<Integer, VarVersionPair> parent, Map<Integer, VarVersionPair> leaked, Map<VarVersionPair, VarVersionPair> blacklist) {
+  private VPPEntry mergeVars(SSAConstructorSparseEx ssa, Statement stat, Map<Integer, VarVersionPair> parent, Map<Integer, VarVersionPair> leaked, Map<VarVersionPair, VarVersionPair> blacklist) {
     Map<Integer, VarVersionPair> this_vars = new HashMap<Integer, VarVersionPair>();
     if (parent.size() > 0)
       this_vars.putAll(parent);
@@ -575,7 +597,7 @@ public class VarDefinitionHelper {
 
           //Map<VarVersionPair, VarVersionPair> blacklist_n = new HashMap<VarVersionPair, VarVersionPair>();
           Map<Integer, VarVersionPair> leaked_n = new HashMap<Integer, VarVersionPair>();
-          VPPEntry remap = mergeVars(st, this_vars, leaked_n, blacklist);
+          VPPEntry remap = mergeVars(ssa, st, this_vars, leaked_n, blacklist);
 
           if (remap != null) {
             return remap;
@@ -634,13 +656,147 @@ public class VarDefinitionHelper {
       for (int i = 0; i < exps.size(); i++) {
         VPPEntry ret = processExprent(exps.get(i), this_vars, scoped, blacklist);
         if (ret != null && !isVarReadFirst(ret.getValue(), stat, i + 1)) {
-          // TODO: this is where seperate int and bool types are merged
+          // TODO: this is where separate int and bool types are merged
+
+//          System.out.println("merge: " + exps.get(i) + " -> " + ret.getValue());
+
+          if (!shouldMergeSSA(ssa, stat, ret.getKey(), ret.getValue())) {
+            return null;
+          }
 
           return ret;
         }
       }
     }
     return null; // We made it with no remaps!!!!!!!
+  }
+
+  private boolean shouldMergeSSA(SSAConstructorSparseEx ssa, Statement stat, VarVersionPair from, VarVersionPair to) {
+    from = new VarVersionPair(from.var, 1);
+    // 'to' given as (var, 0) while the usage must be of version 1
+    // so go to version 2
+    VarVersionPair newVer = new VarVersionPair(to.var, to.version + 1);
+
+//    System.out.println("from: " + from + " to: " + to);
+
+    HashSet<VarExprent> varEx = ssa.varVersionToExpr.get(from);
+    ssa.varVersionToExpr.remove(from);
+
+    if (varEx == null) {
+      System.out.println(from);
+      System.out.println(ssa.varVersionToExpr.keySet());
+      return false;
+    }
+
+    for (VarExprent ex : varEx) {
+      ex.setIndex(newVer.var);
+      ex.setVersion(newVer.version);
+    }
+
+    ssa.varVersionToExpr.put(newVer, varEx);
+
+    // Analyze
+
+    int index = stat.getParent().getStats().indexOf(stat);
+
+    Statement parent = stat.getParent();
+
+    if (stat == parent.getFirst() && parent.getParent() != null && extractFromHead(parent)) {
+      index = parent.getParent().getStats().indexOf(parent);
+
+      parent = parent.getParent();
+    }
+
+    boolean isUse = isVarUseOfOldVer(parent, true,index + 1, newVer);
+
+    for (VarExprent ex : varEx) {
+      ex.setIndex(from.var);
+      ex.setVersion(from.version);
+    }
+
+    ssa.varVersionToExpr.remove(newVer);
+    ssa.varVersionToExpr.put(from, varEx);
+
+    return !isUse;
+  }
+
+  private static boolean extractFromHead(Statement stat) {
+    return stat.type == Statement.TYPE_IF ||
+      stat.type == Statement.TYPE_SWITCH  ||
+      (stat.type == Statement.TYPE_DO && ((DoStatement)stat).getLooptype() != DoStatement.LOOP_DO) ||
+      stat.type == Statement.TYPE_SYNCRONIZED;
+  }
+
+  private static boolean isVarUseOfOldVer(Statement stat, boolean parent, int index, VarVersionPair newVer) {
+    if (!parent) {
+      for (Object obj : stat.getSequentialObjects()) {
+        if (obj instanceof Exprent) {
+          VerRes res = isVarInvalidVer(newVer, (Exprent) obj);
+
+          if (res == VerRes.FOUND) {
+            return true;
+          } else if (res == VerRes.STOP) {
+            return false;
+          }
+        }
+      }
+    }
+
+    if (stat.getExprents() != null) {
+      for (Exprent exprent : stat.getExprents()) {
+        VerRes res = isVarInvalidVer(newVer, exprent);
+
+        if (res == VerRes.FOUND) {
+          return true;
+        } else if (res == VerRes.STOP) {
+          return false;
+        }
+      }
+    }
+
+    for (int i = index; i < stat.getStats().size(); i++) {
+      if (isVarUseOfOldVer(stat.getStats().get(i), false,0, newVer)) {
+        return true;
+      }
+    }
+
+
+    return false;
+  }
+
+  private enum VerRes {
+    FOUND,
+    CONTINUE,
+    STOP;
+  }
+
+  private static VerRes isVarInvalidVer(VarVersionPair target, Exprent exp) {
+    AssignmentExprent ass = exp.type == Exprent.EXPRENT_ASSIGNMENT ? (AssignmentExprent)exp : null;
+    List<Exprent> lst = exp.getAllExprents(true, true);
+
+    for (Exprent ex : lst) {
+      if (ex.type == Exprent.EXPRENT_VAR) {
+        VarExprent var = (VarExprent)ex;
+        if (var.getIndex() == target.var && var.getVersion() != target.version) {
+
+          boolean allowed = false;
+          if (ass != null) {
+            if (var == ass.getLeft() && ass.getCondType() == AssignmentExprent.CONDITION_NONE) {
+              return VerRes.STOP;
+            } else {
+              return VerRes.FOUND;
+            }
+          }
+
+          // TODO: is this correct? we probably need to return true here!
+          if (!allowed) {
+//            return true;
+          }
+        }
+      }
+    }
+
+    return VerRes.CONTINUE;
   }
 
   private VPPEntry processExprent(Exprent exp, Map<Integer, VarVersionPair> this_vars, Map<Integer, VarVersionPair> leaked, Map<VarVersionPair, VarVersionPair> blacklist) {
@@ -1109,16 +1265,16 @@ public class VarDefinitionHelper {
   }
 
   private static boolean isVarReadFirst(VarVersionPair target, Exprent exp, VarExprent... whitelist) {
-    AssignmentExprent ass = exp.type == Exprent.EXPRENT_ASSIGNMENT ? (AssignmentExprent)exp : null;
+    AssignmentExprent ass = exp.type == Exprent.EXPRENT_ASSIGNMENT ? (AssignmentExprent) exp : null;
     List<Exprent> lst = exp.getAllExprents(true);
     lst.add(exp);
     for (Exprent ex : lst) {
       if (ex.type == Exprent.EXPRENT_VAR) {
-        VarExprent var = (VarExprent)ex;
+        VarExprent var = (VarExprent) ex;
         if (var.getIndex() == target.var && var.getVersion() == target.version) {
           boolean allowed = false;
           if (ass != null) {
-            if (var == ass.getLeft()) {
+            if (var == ass.getLeft() && ass.getCondType() == AssignmentExprent.CONDITION_NONE) {
               allowed = true;
             }
           }

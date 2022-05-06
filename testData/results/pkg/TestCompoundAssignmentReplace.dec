@@ -8,16 +8,16 @@ public class TestCompoundAssignmentReplace {
    private int i_5;
 
    public void test(int var1, int var2) {
-      var1 += var2;
-      var1 += var2;
-      int var5 = var1;
+      int var6 = var1 + var2;
+      int var7 = var6 + var2;
+      int var5 = var7;
       if (var2 > 0) {
-         var1 += var2;
+         var7 += var2;
       }
 
-      this.i_1 = var1;
+      this.i_1 = var7;
       this.i_2 = var1;
-      this.i_3 = var1;
+      this.i_3 = var6;
       this.i_4 = var5;
    }
 }
@@ -25,10 +25,14 @@ public class TestCompoundAssignmentReplace {
 class 'pkg/TestCompoundAssignmentReplace' {
    method 'test (II)V' {
       0      18
+      2      10
       3      10
+      4      10
       5      10
       6      19
+      9      11
       a      11
+      b      11
       c      11
       d      12
       e      12

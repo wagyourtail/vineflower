@@ -17,4 +17,6 @@ public class GenericClassDescriptor {
   public final List<String> fparameters = new ArrayList<>();
 
   public final List<List<VarType>> fbounds = new ArrayList<>();
+
+  public GenericsGraph graph = new GenericsGraph();
 }

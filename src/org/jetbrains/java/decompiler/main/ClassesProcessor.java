@@ -25,6 +25,7 @@ import org.jetbrains.java.decompiler.struct.attr.StructInnerClassesAttribute;
 import org.jetbrains.java.decompiler.struct.attr.StructLineNumberTableAttribute;
 import org.jetbrains.java.decompiler.struct.consts.ConstantPool;
 import org.jetbrains.java.decompiler.struct.gen.VarType;
+import org.jetbrains.java.decompiler.struct.gen.generics.GenericsGraph;
 import org.jetbrains.java.decompiler.util.InterpreterUtil;
 import org.jetbrains.java.decompiler.util.TextBuffer;
 
@@ -412,6 +413,8 @@ public class ClassesProcessor implements CodeConstants {
       ImportCollector importCollector = new ImportCollector(root);
       DecompilerContext.startClass(importCollector);
 
+      buildGenGraphs(root, new GenericsGraph());
+
       if (packageInfo) {
         ClassWriter.packageInfoToJava(cl, buffer);
 
@@ -546,6 +549,15 @@ public class ClassesProcessor implements CodeConstants {
 
     for (ClassNode nd : nestedCopy) {
       initWrappers(nd);
+    }
+  }
+
+  private static void buildGenGraphs(ClassNode node, GenericsGraph graph) {
+    GenericsGraph.buildForClass(node, graph);
+
+    for (ClassNode nt : node.nested) {
+      // Reset graph for static nested classes
+      buildGenGraphs(nt, (nt.access & CodeConstants.ACC_STATIC) == 0 ? graph.copy() : new GenericsGraph());
     }
   }
 

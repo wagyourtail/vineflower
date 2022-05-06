@@ -6,6 +6,8 @@ import org.jetbrains.java.decompiler.code.Instruction;
 import org.jetbrains.java.decompiler.code.InstructionSequence;
 import org.jetbrains.java.decompiler.code.cfg.BasicBlock;
 import org.jetbrains.java.decompiler.main.DecompilerContext;
+import org.jetbrains.java.decompiler.struct.StructMethod;
+import org.jetbrains.java.decompiler.struct.gen.generics.GenericsGraph;
 import org.jetbrains.java.decompiler.util.ListStack;
 import org.jetbrains.java.decompiler.util.TextBuffer;
 import org.jetbrains.java.decompiler.main.collectors.BytecodeMappingTracer;
@@ -931,12 +933,24 @@ public class ExprProcessor implements CodeConstants {
     }
 
     VarType rightType = exprent.getInferredExprType(leftType);
-    exprent = narrowGenericCastType(exprent, leftType);
+    narrowGenericCastType(exprent, leftType);
 
     boolean doCast = (!leftType.isSuperset(rightType) && (rightType.equals(VarType.VARTYPE_OBJECT) || leftType.type != CodeConstants.TYPE_OBJECT));
     boolean doCastNull = (castNull.cast && rightType.type == CodeConstants.TYPE_NULL && !UNDEFINED_TYPE_STRING.equals(getTypeName(leftType)));
     boolean doCastNarrowing = (castNarrowing && isIntConstant(exprent) && isNarrowedIntType(leftType));
     boolean doCastGenerics = doesContravarianceNeedCast(leftType, rightType);
+
+    if (doCast) {
+      StructMethod mt = (StructMethod) DecompilerContext.getProperty(DecompilerContext.CURRENT_METHOD);
+
+      if (mt != null && mt.getSignature() != null) {
+        GenericsGraph graph = mt.getSignature().graph;
+
+        if (graph.isAssignable(leftType, rightType)) {
+          doCast = false;
+        }
+      }
+    }
 
     boolean cast = castAlways || doCast || doCastNull || doCastNarrowing || doCastGenerics;
 

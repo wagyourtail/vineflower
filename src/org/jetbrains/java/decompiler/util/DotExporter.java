@@ -18,7 +18,9 @@ import org.jetbrains.java.decompiler.modules.decompiler.stats.*;
 import org.jetbrains.java.decompiler.modules.decompiler.vars.VarVersionEdge;
 import org.jetbrains.java.decompiler.modules.decompiler.vars.VarVersionNode;
 import org.jetbrains.java.decompiler.modules.decompiler.vars.VarVersionsGraph;
+import org.jetbrains.java.decompiler.struct.StructClass;
 import org.jetbrains.java.decompiler.struct.StructMethod;
+import org.jetbrains.java.decompiler.struct.gen.generics.GenericsGraph;
 import org.jetbrains.java.decompiler.util.FastSparseSetFactory.FastSparseSet;
 
 public class DotExporter {
@@ -537,8 +539,44 @@ public class DotExporter {
     return buffer.toString();
   }
 
+  private static String gensToDot(GenericsGraph graph) {
+    StringBuilder builder = new StringBuilder();
+
+    builder.append("digraph G {\r\n");
+    for (GenericsGraph.GenNode node : graph.getNodes()) {
+      builder.append("x").append(node.getId())
+        .append(" [shape=box,label=\"")
+        .append(node.getId())
+        .append("\n")
+        .append(node.getType().toString())
+        .append("\"]\n");
+
+      for (GenericsGraph.GenNode suc : node.getSuccessors()) {
+        builder.append("x" + (node.getId())+" -> x"+(suc.getId())+";\r\n");
+      }
+    }
+
+    builder.append("}");
+
+    return builder.toString();
+  }
+
   private static File getFile(String folder, StructMethod mt, String suffix) {
     return getFile(folder, mt, "", suffix);
+  }
+
+  private static File getFile(String folder, StructClass cl, String suffix) {
+    return getFile(folder, cl, "", suffix);
+  }
+
+  private static File getFile(String folder, StructClass cl, String subdirectory, String suffix) {
+    File root = new File(folder + cl.qualifiedName + (subdirectory.isEmpty() ? "" : "/" + subdirectory));
+    if (!root.isDirectory()) {
+      root.mkdirs();
+    }
+
+    return new File(root,
+        suffix + ".dot");
   }
 
   private static File getFile(String folder, StructMethod mt, String subdirectory, String suffix) {
@@ -662,6 +700,30 @@ public class DotExporter {
     try{
       BufferedOutputStream out = new BufferedOutputStream(new FileOutputStream(getFile(DOTS_FOLDER, mt, suffix)));
       out.write(varsToDot(graph).getBytes());
+      out.close();
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
+  }
+
+  public static void toDotFile(GenericsGraph graph, StructMethod mt, String suffix) {
+    if (!DUMP_DOTS)
+      return;
+    try{
+      BufferedOutputStream out = new BufferedOutputStream(new FileOutputStream(getFile(DOTS_FOLDER, mt, suffix)));
+      out.write(gensToDot(graph).getBytes());
+      out.close();
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
+  }
+
+  public static void toDotFile(GenericsGraph graph, StructClass cl, String suffix) {
+    if (!DUMP_DOTS)
+      return;
+    try{
+      BufferedOutputStream out = new BufferedOutputStream(new FileOutputStream(getFile(DOTS_FOLDER, cl, suffix)));
+      out.write(gensToDot(graph).getBytes());
       out.close();
     } catch (Exception e) {
       e.printStackTrace();

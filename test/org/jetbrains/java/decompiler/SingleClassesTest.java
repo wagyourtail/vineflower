@@ -585,7 +585,7 @@ public class SingleClassesTest extends SingleClassesTestBase {
     register(JAVA_8, "TestGenericsQualified");
     // TODO: first method needs a cast
     register(JAVA_8, "TestGenericCast");
-    // TODO: shouldn't make foreach
+    // TODO: foreach should have a cast on the collection
     register(JAVA_8, "TestItrLoop");
     // TODO: shouldn't place diamonds in constructor
     register(JAVA_8, "TestNoGenericDiamonds");

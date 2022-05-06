@@ -12,6 +12,7 @@ public class GenericMethodDescriptor {
   public final List<VarType> parameterTypes;
   public final VarType returnType;
   public final List<VarType> exceptionTypes;
+  public GenericsGraph graph = new GenericsGraph();
 
   public GenericMethodDescriptor(List<String> typeParameters,
                                  List<List<VarType>> typeParameterBounds,

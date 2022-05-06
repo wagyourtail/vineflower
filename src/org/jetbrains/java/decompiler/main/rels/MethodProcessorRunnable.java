@@ -77,6 +77,8 @@ public class MethodProcessorRunnable implements Runnable {
     debugCurrentCFG.set(null);
     debugCurrentDecompileRecord.set(null);
 
+    DecompilerContext.setProperty(DecompilerContext.CURRENT_METHOD, mt);
+
     boolean isInitializer = CodeConstants.CLINIT_NAME.equals(mt.getName()); // for now static initializer only
 
     mt.expandData(cl);

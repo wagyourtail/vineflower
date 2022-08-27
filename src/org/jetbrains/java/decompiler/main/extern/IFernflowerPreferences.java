@@ -7,7 +7,6 @@ import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -158,7 +157,7 @@ public interface IFernflowerPreferences {
   String INCLUDE_ENTIRE_CLASSPATH = "iec";
 
   @Name("Include Java Runtime")
-  @Description("Give the decompiler information about the Java runtime.")
+  @Description("Give the decompiler information about the Java runtime, either 1 or current for the current runtime, or a path to another runtime")
   String INCLUDE_JAVA_RUNTIME = "jrt";
 
   @Name("Explicit Generic Arguments")
@@ -219,8 +218,12 @@ public interface IFernflowerPreferences {
   @Description("Use JAD-style variable naming for local variables, instead of var<index>_<version>A.")
   String USE_JAD_VARNAMING = "jvn";
 
+  @Name("Skip Extra Files")
+  @Description("Skip copying non-class files from the input folder or file to the output")
   String SKIP_EXTRA_FILES = "sef";
 
+  @Name("Warn about inconsistent inner attributes")
+  @Description("Warn about inconsistent inner class attributes")
   String WARN_INCONSISTENT_INNER_CLASSES = "win";
 
   @Name("Dump Bytecode On Error")
@@ -234,6 +237,18 @@ public interface IFernflowerPreferences {
   @Name("Decompiler Comments")
   @Description("Sometimes, odd behavior of the bytecode or unfixable problems occur. This enables or disables the adding of those to the decompiled output.")
   String DECOMPILER_COMMENTS = "dec";
+
+  @Name("SourceFile comments")
+  @Description("Add debug comments showing the class SourceFile attribute if present.")
+  String SOURCE_FILE_COMMENTS = "sfc";
+
+  @Name("Decompile complex constant-dynamic expressions")
+  @Description("Some constant-dynamic expressions can't be converted to a single Java expression with identical run-time behaviour. This decompiles them to a similar non-lazy expression, marked with a comment.")
+  String DECOMPILE_COMPLEX_CONDYS = "dcc";
+
+  @Name("Force JSR inline")
+  @Description("Forces the processing of JSR instructions even if the class files shouldn't contain it (Java 7+)")
+  String FORCE_JSR_INLINE = "fji";
 
   Map<String, Object> DEFAULTS = getDefaults();
 
@@ -277,7 +292,7 @@ public interface IFernflowerPreferences {
     defaults.put(SIMPLIFY_STACK_SECOND_PASS, "1"); // Generally produces better bytecode, useful to debug if it does something strange
 
     defaults.put(INCLUDE_ENTIRE_CLASSPATH, "0");
-    defaults.put(INCLUDE_JAVA_RUNTIME, "0");
+    defaults.put(INCLUDE_JAVA_RUNTIME, "");
     defaults.put(EXPLICIT_GENERIC_ARGUMENTS, "0");
     defaults.put(INLINE_SIMPLE_LAMBDAS, "1");
 
@@ -299,6 +314,9 @@ public interface IFernflowerPreferences {
     defaults.put(DUMP_BYTECODE_ON_ERROR, "1");
     defaults.put(DUMP_EXCEPTION_ON_ERROR, "1");
     defaults.put(DECOMPILER_COMMENTS, "1");
+    defaults.put(SOURCE_FILE_COMMENTS, "0");
+    defaults.put(DECOMPILE_COMPLEX_CONDYS, "0");
+    defaults.put(FORCE_JSR_INLINE, "0");
 
     return Collections.unmodifiableMap(defaults);
   }

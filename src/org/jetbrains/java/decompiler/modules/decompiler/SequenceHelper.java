@@ -8,6 +8,7 @@ import org.jetbrains.java.decompiler.modules.decompiler.stats.BasicBlockStatemen
 import org.jetbrains.java.decompiler.modules.decompiler.stats.RootStatement;
 import org.jetbrains.java.decompiler.modules.decompiler.stats.SequenceStatement;
 import org.jetbrains.java.decompiler.modules.decompiler.stats.Statement;
+import org.jetbrains.java.decompiler.modules.decompiler.stats.Statement.EdgeDirection;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -20,13 +21,14 @@ public final class SequenceHelper {
   public static void condenseSequences(Statement root) {
     ValidationHelper.validateStatement((RootStatement) root.getTopParent());
 
-
     condenseSequencesRec(root);
+
+    ValidationHelper.validateStatement((RootStatement) root.getTopParent());
   }
 
   private static void condenseSequencesRec(Statement stat) {
 
-    if (stat.type == Statement.TYPE_SEQUENCE) {
+    if (stat instanceof SequenceStatement) {
 
       List<Statement> lst = new ArrayList<>(stat.getStats());
 
@@ -35,10 +37,9 @@ public final class SequenceHelper {
       // unfold blocks
       for (int i = 0; i < lst.size(); i++) {
         Statement st = lst.get(i);
-        if (st.type == Statement.TYPE_SEQUENCE) {
+        if (st instanceof SequenceStatement) {
 
           removeEmptyStatements((SequenceStatement)st);
-          ValidationHelper.validateStatement((RootStatement) st.getTopParent());
 
           if (i == lst.size() - 1 || isSequenceDisbandable(st, lst.get(i + 1))) {
 
@@ -46,7 +47,7 @@ public final class SequenceHelper {
             Statement first = st.getFirst();
             for (StatEdge edge : st.getAllPredecessorEdges()) {
               st.removePredecessor(edge);
-              edge.getSource().changeEdgeNode(Statement.DIRECTION_FORWARD, edge, first);
+              edge.getSource().changeEdgeNode(EdgeDirection.FORWARD, edge, first);
               first.addPredecessor(edge);
             }
 
@@ -63,7 +64,7 @@ public final class SequenceHelper {
                   }
                 }
                 else {
-                  edge.getSource().changeEdgeType(Statement.DIRECTION_FORWARD, edge, StatEdge.TYPE_REGULAR);
+                  edge.getSource().changeEdgeType(EdgeDirection.FORWARD, edge, StatEdge.TYPE_REGULAR);
                   if (edge.closure == null) {
                     throw new IllegalStateException("Closure is null for edge " + edge + " in statement " + last);
                   }
@@ -80,7 +81,13 @@ public final class SequenceHelper {
 
             for (StatEdge edge : new HashSet<>(st.getLabelEdges())) {
               if (edge.getSource() != last) {
-                last.addLabeledEdge(edge);
+                if (last instanceof BasicBlockStatement) {
+                  // Basic block cannot support labels so we add to the new top level sequence
+                  // TODO: in what circumstances would you not want the top sequence to receive the edge?
+                  stat.addLabeledEdge(edge);
+                } else {
+                  last.addLabeledEdge(edge);
+                }
               }
             }
 
@@ -108,10 +115,9 @@ public final class SequenceHelper {
     }
 
     // sequence consisting of one statement -> disband
-    if (stat.type == Statement.TYPE_SEQUENCE) {
+    if (stat instanceof SequenceStatement) {
 
       removeEmptyStatements((SequenceStatement)stat);
-      ValidationHelper.validateStatement((RootStatement) stat.getTopParent());
 
       if (stat.getStats().size() == 1) {
 
@@ -143,7 +149,7 @@ public final class SequenceHelper {
     outer:
     while (true) {
       for (Statement st : stat.getStats()) {
-        if ((st.getStats().isEmpty() || st.getExprents() != null) && st.type != Statement.TYPE_BASICBLOCK) {
+        if ((st.getStats().isEmpty() || st.getExprents() != null) && !(st instanceof BasicBlockStatement)) {
           destroyAndFlattenStatement(st);
           continue outer;
         }
@@ -223,11 +229,11 @@ public final class SequenceHelper {
 
               for (StatEdge edge : st.getAllPredecessorEdges()) {
                 if (sucedge.getType() != StatEdge.TYPE_REGULAR) {
-                  edge.getSource().changeEdgeType(Statement.DIRECTION_FORWARD, edge, sucedge.getType());
+                  edge.getSource().changeEdgeType(EdgeDirection.FORWARD, edge, sucedge.getType());
                 }
 
                 st.removePredecessor(edge);
-                edge.getSource().changeEdgeNode(Statement.DIRECTION_FORWARD, edge, sucedge.getDestination());
+                edge.getSource().changeEdgeNode(EdgeDirection.FORWARD, edge, sucedge.getDestination());
                 sucedge.getDestination().addPredecessor(edge);
 
                 if (sucedge.closure != null) {
@@ -304,10 +310,10 @@ public final class SequenceHelper {
     }
 
     switch (stat.type) {
-      case Statement.TYPE_IF:
-      case Statement.TYPE_SEQUENCE:
-      case Statement.TYPE_SWITCH:
-      case Statement.TYPE_SYNCRONIZED:
+      case IF:
+      case SEQUENCE:
+      case SWITCH:
+      case SYNCHRONIZED:
         return getFirstExprentlist(stat.getFirst());
     }
 
@@ -359,7 +365,7 @@ public final class SequenceHelper {
       return stat;
     }
 
-    while (first.type == Statement.TYPE_SEQUENCE) {
+    while (first instanceof SequenceStatement) {
       first = first.getFirst();
     }
 

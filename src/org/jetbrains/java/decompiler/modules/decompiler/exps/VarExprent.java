@@ -2,6 +2,7 @@
 package org.jetbrains.java.decompiler.modules.decompiler.exps;
 
 import org.jetbrains.java.decompiler.code.CodeConstants;
+import org.jetbrains.java.decompiler.code.Instruction;
 import org.jetbrains.java.decompiler.main.ClassWriter;
 import org.jetbrains.java.decompiler.main.ClassesProcessor.ClassNode;
 import org.jetbrains.java.decompiler.main.DecompilerContext;
@@ -11,7 +12,7 @@ import org.jetbrains.java.decompiler.modules.decompiler.ExprProcessor;
 import org.jetbrains.java.decompiler.modules.decompiler.stats.Statement;
 import org.jetbrains.java.decompiler.modules.decompiler.vars.CheckTypesResult;
 import org.jetbrains.java.decompiler.modules.decompiler.vars.VarProcessor;
-import org.jetbrains.java.decompiler.modules.decompiler.vars.VarTypeProcessor;
+import org.jetbrains.java.decompiler.modules.decompiler.vars.VarTypeProcessor.FinalType;
 import org.jetbrains.java.decompiler.modules.decompiler.vars.VarVersionPair;
 import org.jetbrains.java.decompiler.struct.StructClass;
 import org.jetbrains.java.decompiler.struct.attr.StructGeneralAttribute;
@@ -35,6 +36,7 @@ import java.util.stream.Collectors;
 public class VarExprent extends Exprent {
   public static final int STACK_BASE = 10000;
   public static final String VAR_NAMELESS_ENCLOSURE = "<VAR_NAMELESS_ENCLOSURE>";
+  private static final boolean FORCE_VARVER_NAME = false; // Debug only!
 
   private int index;
   private VarType varType;
@@ -44,6 +46,9 @@ public class VarExprent extends Exprent {
   private boolean classDef = false;
   private boolean stack = false;
   private LocalVariable lvt = null;
+  // Only relevant for first stage of decompilation, used with finally processing
+  // Applies only to real vars, not stack vars
+  private Instruction backing = null;
   private boolean isEffectivelyFinal = false;
   private VarType boundType;
 
@@ -52,7 +57,7 @@ public class VarExprent extends Exprent {
   }
 
   public VarExprent(int index, VarType varType, VarProcessor processor, BitSet bytecode) {
-    super(EXPRENT_VAR);
+    super(Type.VAR);
     this.index = index;
     this.varType = varType;
     this.processor = processor;
@@ -115,7 +120,7 @@ public class VarExprent extends Exprent {
       VarVersionPair varVersion = getVarVersionPair();
 
       if (definition) {
-        if (processor != null && processor.getVarFinal(varVersion) == VarTypeProcessor.VAR_EXPLICIT_FINAL) {
+        if (processor != null && processor.getVarFinal(varVersion) == FinalType.EXPLICIT_FINAL) {
           buffer.append("final ");
         }
         appendDefinitionType(buffer);
@@ -216,6 +221,14 @@ public class VarExprent extends Exprent {
            InterpreterUtil.equalObjects(getVarType(), ve.getVarType()); // FIXME: varType comparison redundant?
   }
 
+  public boolean equalsVersions(Object o) {
+    if (o == this) return true;
+    if (!(o instanceof VarExprent)) return false;
+
+    VarExprent ve = (VarExprent)o;
+    return index == ve.getIndex() && version == ve.getVersion();
+  }
+
   @Override
   public void getBytecodeRange(BitSet values) {
     measureBytecode(values);
@@ -300,6 +313,14 @@ public class VarExprent extends Exprent {
     this.stack = stack;
   }
 
+  public Instruction getBackingInstr() {
+    return backing;
+  }
+
+  public void setBackingInstr(Instruction backing) {
+    this.backing = backing;
+  }
+
   public void setLVT(LocalVariable var) {
     this.lvt = var;
     if (processor != null && lvt != null) {
@@ -321,24 +342,26 @@ public class VarExprent extends Exprent {
 
   public String getName() {
     VarVersionPair pair = getVarVersionPair();
+    if (!FORCE_VARVER_NAME) {
 
-    if (this.processor != null) {
-      String clashingName = this.processor.getClashingName(pair);
+      if (this.processor != null) {
+        String clashingName = this.processor.getClashingName(pair);
 
-      // Clashing names take precedence over lvt names (as they are lvt names with an 'x' applied to differentiate them)
-      if (clashingName != null) {
-        return clashingName;
+        // Clashing names take precedence over lvt names (as they are lvt names with an 'x' applied to differentiate them)
+        if (clashingName != null) {
+          return clashingName;
+        }
       }
-    }
 
-    if (this.lvt != null) {
-      return this.lvt.getName();
-    }
+      if (this.lvt != null) {
+        return this.lvt.getName();
+      }
 
-    if (this.processor != null) {
-      String ret = this.processor.getVarName(pair);
-      if (ret != null) {
-        return ret;
+      if (this.processor != null) {
+        String ret = this.processor.getVarName(pair);
+        if (ret != null) {
+          return ret;
+        }
       }
     }
 
@@ -394,7 +417,7 @@ public class VarExprent extends Exprent {
   public boolean isVarReferenced(Exprent exp, VarExprent... whitelist) {
     List<Exprent> lst = exp.getAllExprents(true);
     lst.add(exp);
-    lst = lst.stream().filter(e -> e != this && e.type == Exprent.EXPRENT_VAR &&
+    lst = lst.stream().filter(e -> e != this && e instanceof VarExprent &&
       getVarVersionPair().equals(((VarExprent)e).getVarVersionPair()))
         .collect(Collectors.toList());
 
@@ -420,7 +443,7 @@ public class VarExprent extends Exprent {
 
   @Override
   public String toString() {
-    return "VarExprent[" + index + ',' + version +"]";
+    return "VarExprent[" + index + ',' + version +"]: {" + super.toString() + "}";
   }
 
   // *****************************************************************************

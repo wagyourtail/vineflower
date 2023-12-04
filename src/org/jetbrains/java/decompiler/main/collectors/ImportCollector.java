@@ -253,11 +253,22 @@ public class ImportCollector {
     }
   }
 
-  public boolean isWriteLocked() {
-    return writeLocked;
+  private void setWriteLocked(boolean writeLocked) {
+    this.writeLocked = writeLocked;
   }
 
-  public void setWriteLocked(boolean writeLocked) {
-    this.writeLocked = writeLocked;
+  public Lock lock() {
+    return new Lock();
+  }
+
+  public class Lock implements AutoCloseable {
+    private Lock() {
+      setWriteLocked(true);
+    }
+
+    @Override
+    public void close() {
+      setWriteLocked(false);
+    }
   }
 }
